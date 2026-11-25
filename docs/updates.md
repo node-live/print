@@ -11,7 +11,8 @@ both, and each app updates from the files of its own platform (see the top-level
   persisted; a restart, an update included, starts it over.
 - A check runs only while the app is idle: no job on either channel, and the last job ended at least 5 minutes
   ago. No job since the app started counts as idle. A job counts from the moment `POST /print` arrives until
-  its response has been sent, whatever the outcome, so a body still being received is a job. Both apps keep
+  its response has been sent, whatever the outcome, so a body still being received is a job. A request refused
+  for its `Host` or `Origin` (`protocol.md`) is not a job, so no web page can hold updates off. Both apps keep
   "jobs in flight" and "when the last one ended" for this.
 - Not idle at the tick: nothing happens until the next tick. No catch-up, no shorter retry.
 - Anything that fails (no network, GitHub answering an error or a rate limit, a broken download, a folder the
@@ -89,8 +90,8 @@ on a fake newer version: the app checks the local feed, downloads, swaps, and co
 new version in place.
 
 Unit tests, one per rule: the idle rule (a job in flight; the last job 4 minutes ago; 5 minutes ago; none
-since start), the version comparison (newer, same, older), a check skipped while busy, an update downloaded
-and applied when idle, an apply deferred when a job arrives between download and apply. macOS also: the
-redirect parsed and a malformed one refused, a staged bundle refused for a wrong version or a broken
+since start; a refused request), the version comparison (newer, same, older), a check skipped while busy, an
+update downloaded and applied when idle, an apply deferred when a job arrives between download and apply. macOS
+also: the redirect parsed and a malformed one refused, a staged bundle refused for a wrong version or a broken
 signature, the old bundle put back when the install fails halfway. No test waits for real time: the timer
 takes a clock.

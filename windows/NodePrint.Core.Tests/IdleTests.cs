@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Time.Testing;
 
@@ -42,6 +43,22 @@ public sealed class IdleTests
         clock.Advance(TimeSpan.FromMinutes(minutes));
 
         Assert.Equal(idle, host.Service.IsIdle(clock.GetUtcNow()));
+    }
+
+    [Theory]
+    [InlineData("/print?channel=label", "https://evil.example.com")]
+    [InlineData("http://evil.example.com:19233/print?channel=label", null)]
+    public async Task A_request_refused_for_its_host_or_origin_is_not_a_job(string url, string? origin)
+    {
+        var clock = new FakeTimeProvider();
+        await using var host = await TestHost.StartAsync(new FakeBackend(), clock: clock);
+        var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = PdfBody() };
+        if (origin is not null) request.Headers.Add("Origin", origin);
+
+        var response = await host.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(host.Service.IsIdle(clock.GetUtcNow()));
     }
 
     [Fact]

@@ -59,6 +59,7 @@ public struct Response: Sendable {
 /// The local HTTP contract of `docs/protocol.md`, independent of the socket that carries it.
 public final class LocalAPI: Sendable {
     public static let maxBodyBytes = 52_428_800
+    static let host = "127.0.0.1:\(LocalServer.defaultPort)"
     static let builtInOrigins = ["https://nrp.node.live", "http://localhost:5173", "http://127.0.0.1:5173"]
 
     private let system: any PrintSystem
@@ -74,11 +75,20 @@ public final class LocalAPI: Sendable {
     /// The answer when the request line and headers already decide it, so the body need not be read.
     /// `contentLength` is `nil` for a body of unknown length.
     public func response(to head: RequestHead, contentLength: Int?) -> Response? {
-        if let origin = head.headers["origin"], !allows(origin) {
-            return .error(403, "FORBIDDEN_ORIGIN", "\(origin) may not use NODE Print.")
-        }
+        if let refusal = refusal(to: head) { return refusal }
         if let early = routeResponse(head) ?? printHeadResponse(head, contentLength: contentLength) {
             return withCORS(early, head)
+        }
+        return nil
+    }
+
+    /// The `403` for a request not addressed to `host` or sent from an origin NODE Print does not serve.
+    func refusal(to head: RequestHead) -> Response? {
+        guard head.headers["host"] == Self.host else {
+            return .error(403, "FORBIDDEN_HOST", "NODE Print only answers requests addressed to \(Self.host).")
+        }
+        if let origin = head.headers["origin"], !allows(origin) {
+            return .error(403, "FORBIDDEN_ORIGIN", "\(origin) may not use NODE Print.")
         }
         return nil
     }

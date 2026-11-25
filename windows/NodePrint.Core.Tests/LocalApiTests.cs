@@ -351,6 +351,20 @@ public sealed class LocalApiTests
         Assert.Empty(backend.Jobs);
     }
 
+    [Theory]
+    [InlineData("evil.example.com:19233")]
+    [InlineData("localhost:19233")]
+    public async Task Only_requests_addressed_to_127_0_0_1_19233_are_served(string other)
+    {
+        await using var host = await TestHost.StartAsync(new FakeBackend());
+
+        var own = await host.Client.GetAsync("/printers");
+        var foreign = await host.Client.GetAsync($"http://{other}/printers");
+
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+        await AssertErrorAsync(foreign, HttpStatusCode.Forbidden, "FORBIDDEN_HOST");
+    }
+
     [Fact]
     public async Task A_preflight_on_any_path_is_204()
     {

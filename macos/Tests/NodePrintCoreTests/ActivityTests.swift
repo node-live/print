@@ -48,7 +48,7 @@ final class ManualClock: UpdateClock {
         let activity = Activity(clock: clock)
         let harness = try await Harness.start(FakePrinting([rollo]), channels: .init(label: rollo.id), activity: activity)
         let pdf = samplePDF()
-        let head = "POST /print?channel=label HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: \(pdf.count)\r\nExpect: 100-continue\r\n\r\n"
+        let head = "POST /print?channel=label HTTP/1.1\r\nHost: \(LocalAPI.host)\r\nContent-Length: \(pdf.count)\r\nExpect: 100-continue\r\n\r\n"
         let idleWhileTheBodyIsOnItsWay = OSAllocatedUnfairLock(initialState: true)
         let reply = try await harness.exchange(Data(head.utf8), rest: pdf) {
             clock.advance(by: .seconds(10 * 60))
@@ -58,6 +58,15 @@ final class ManualClock: UpdateClock {
         #expect(!idleWhileTheBodyIsOnItsWay.withLock { $0 })
         #expect(!activity.isIdle)
         clock.advance(by: .seconds(5 * 60))
+        #expect(activity.isIdle)
+    }
+
+    @Test(arguments: [["Origin": "https://evil.example"], ["Host": "evil.example:19233"]])
+    func doesNotCountARefusedPrintRequest(headers: [String: String]) async throws {
+        let activity = Activity(clock: ManualClock())
+        let harness = try await Harness.start(FakePrinting([rollo]), channels: .init(label: rollo.id), activity: activity)
+        let reply = try await harness.send("POST", "/print?channel=label", headers: headers, body: samplePDF())
+        #expect(reply.status == 403)
         #expect(activity.isIdle)
     }
 }

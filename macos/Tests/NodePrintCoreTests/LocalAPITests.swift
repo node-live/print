@@ -76,7 +76,8 @@ struct Harness {
     }
 
     func send(_ method: String, _ target: String, headers: [String: String] = [:], body: Data = Data()) async throws -> Reply {
-        var head = "\(method) \(target) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n"
+        var head = "\(method) \(target) HTTP/1.1\r\n"
+        if headers["Host"] == nil { head += "Host: \(LocalAPI.host)\r\n" }
         for (name, value) in headers { head += "\(name): \(value)\r\n" }
         if headers["Content-Length"] == nil, !body.isEmpty || method == "POST" { head += "Content-Length: \(body.count)\r\n" }
         return try await exchange(Data((head + "\r\n").utf8) + body)
@@ -250,7 +251,7 @@ func samplePDF(pages: Int = 1, size: CGSize = CGSize(width: 288, height: 432)) -
     @Test func takesABodyOfExactlyTheLimit() async throws {
         let config = ConfigStore(url: temporaryConfigURL(), firstRun: { [] })
         let api = LocalAPI(system: FakePrinting([rollo]), config: config)
-        let head = RequestHead(method: "POST", target: "/print?channel=label", headers: [:])
+        let head = RequestHead(method: "POST", target: "/print?channel=label", headers: ["host": LocalAPI.host])
         #expect(api.response(to: head, contentLength: 52_428_800) == nil)
         #expect(api.response(to: head, contentLength: 52_428_801)?.status == 413)
     }
@@ -260,7 +261,7 @@ func samplePDF(pages: Int = 1, size: CGSize = CGSize(width: 288, height: 432)) -
         let harness = try await Harness.start(system, channels: .init(label: rollo.id))
         let pdf = samplePDF()
         let half = pdf.count / 2
-        var request = Data("POST /print?channel=label HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n".utf8)
+        var request = Data("POST /print?channel=label HTTP/1.1\r\nHost: \(LocalAPI.host)\r\nTransfer-Encoding: chunked\r\n\r\n".utf8)
         for part in [pdf.prefix(half), pdf.dropFirst(half)] {
             request += Data("\(String(part.count, radix: 16))\r\n".utf8) + part + Data("\r\n".utf8)
         }
@@ -272,8 +273,16 @@ func samplePDF(pages: Int = 1, size: CGSize = CGSize(width: 288, height: 432)) -
 
     @Test func rejectsAChunkedBodyOnceItPassesTheLimit() async throws {
         let harness = try await Harness.start(FakePrinting([rollo]), channels: .init(label: rollo.id))
-        let head = "POST /print?channel=label HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+        let head = "POST /print?channel=label HTTP/1.1\r\nHost: \(LocalAPI.host)\r\nTransfer-Encoding: chunked\r\n\r\n"
         let reply = try await harness.exchange(Data((head + "\(String(52_428_801, radix: 16))\r\n").utf8))
+        #expect(reply.status == 413)
+        #expect(reply.errorCode == "TOO_LARGE")
+    }
+
+    @Test func rejectsAChunkLongerThanAnyBodyCanBe() async throws {
+        let harness = try await Harness.start(FakePrinting([rollo]), channels: .init(label: rollo.id))
+        let head = "POST /print?channel=label HTTP/1.1\r\nHost: \(LocalAPI.host)\r\nTransfer-Encoding: chunked\r\n\r\n"
+        let reply = try await harness.exchange(Data((head + "1\r\n%\r\n\(String(Int.max, radix: 16))\r\n").utf8))
         #expect(reply.status == 413)
         #expect(reply.errorCode == "TOO_LARGE")
     }
@@ -376,7 +385,7 @@ func samplePDF(pages: Int = 1, size: CGSize = CGSize(width: 288, height: 432)) -
     @Test func answersAnExpectContinueBeforeTheBody() async throws {
         let harness = try await Harness.start(FakePrinting([rollo]), channels: .init(label: rollo.id))
         let pdf = samplePDF()
-        let head = "POST /print?channel=label HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: \(pdf.count)\r\nExpect: 100-continue\r\n\r\n"
+        let head = "POST /print?channel=label HTTP/1.1\r\nHost: \(LocalAPI.host)\r\nContent-Length: \(pdf.count)\r\nExpect: 100-continue\r\n\r\n"
         let reply = try await harness.exchange(Data(head.utf8) + pdf)
         #expect(reply.status == 200)
     }
@@ -397,6 +406,16 @@ func samplePDF(pages: Int = 1, size: CGSize = CGSize(width: 288, height: 432)) -
         #expect(reply.status == 405)
         #expect(reply.errorCode == "METHOD_NOT_ALLOWED")
     }
+}
+
+@Test(arguments: ["evil.example:19233", "localhost:19233", nil])
+func answersOnlyRequestsAddressedToItsOwnAddress(other: String?) async throws {
+    let harness = try await Harness.start(FakePrinting([rollo]))
+    #expect(try await harness.send("GET", "/printers").status == 200)
+    let request = other.map { "GET /printers HTTP/1.1\r\nHost: \($0)\r\n\r\n" } ?? "GET /printers HTTP/1.0\r\n\r\n"
+    let reply = try await harness.exchange(Data(request.utf8))
+    #expect(reply.status == 403)
+    #expect(reply.errorCode == "FORBIDDEN_HOST")
 }
 
 @Suite struct CORS {

@@ -44,6 +44,7 @@ internal sealed class TestHost : IAsyncDisposable
         this.directory = directory;
         Service = service;
         Client = app.GetTestClient();
+        Client.BaseAddress = new Uri($"http://127.0.0.1:{LocalApi.Port}");
     }
 
     public HttpClient Client { get; }

@@ -10,6 +10,10 @@ exactly the same way. Everything prints through the OS printer driver; sending Z
 
 - The app listens on `http://127.0.0.1:19233` and nothing else: no `0.0.0.0`, no LAN, no IPv6. The web app
   always uses the literal `127.0.0.1`, never `localhost`.
+- A request whose `Host` header is not exactly `127.0.0.1:19233`, or that has none, is answered `403` with code
+  `FORBIDDEN_HOST`, no CORS headers, and nothing is done; the headers decide it, the body is not looked at. A
+  page whose own domain resolves to `127.0.0.1` (DNS rebinding) is same-origin with itself, so its `GET`s carry
+  no `Origin`; the `Host` it sends is still its own domain.
 - One instance per machine (the port belongs to the machine, not to a user session). A second launch brings
   the running window to the front and exits. When the port cannot be bound (something else holds it) the
   window still opens, shows "Port 19233 is in use" under the header, and the app retries every 5 s; it never
@@ -32,7 +36,7 @@ For an allowed `Origin` the app answers with `Access-Control-Allow-Origin: <that
 path) returns `204`. A request carrying any other `Origin` is answered `403` with code `FORBIDDEN_ORIGIN`, no
 CORS headers, and nothing is done (a browser only hides the response from a foreign page; it still sends the
 request, and a page must not be able to make a label printer print by posting a "simple" request). Requests
-without an `Origin` header (curl, tests) are served.
+without an `Origin` header (curl, tests) are served, as long as their `Host` is right (see Transport).
 
 What the browser side has to live with (the app only needs the headers above):
 
@@ -175,6 +179,7 @@ Errors:
 
 | status | code                  | when                                                   |
 |--------|-----------------------|--------------------------------------------------------|
+| 403    | `FORBIDDEN_HOST`      | the `Host` header is not `127.0.0.1:19233`, or missing |
 | 403    | `FORBIDDEN_ORIGIN`    | the `Origin` header is not an allowed origin           |
 | 400    | `BAD_CHANNEL`         | `channel` is missing or not `label` / `document`       |
 | 400    | `BAD_COPIES`          | `copies` is not 1–99                                   |
@@ -186,7 +191,7 @@ Errors:
 | 409    | `PRINTER_UNAVAILABLE` | chosen printer is missing, offline, in error or paused |
 | 500    | `PRINT_FAILED`        | the OS or the printer refused the job (`message` says) |
 
-Checks run in this order, the first failure answers: origin → channel → copies → size (a `Content-Length`
+Checks run in this order, the first failure answers: host → origin → channel → copies → size (a `Content-Length`
 over the limit is `413` at once; a body without one is counted as it is read) → `BAD_URL` (URL form: judged
 as soon as the JSON is in, like `channel` and `copies`) → `NO_PRINTER` → `PRINTER_UNAVAILABLE` → downloading
 (URL form; nothing is fetched when the channel has no usable printer) → opening the document → printing. A

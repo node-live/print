@@ -7,6 +7,10 @@ public sealed class ApiError(int status, string code, string message) : Exceptio
     public int Status { get; } = status;
     public string Code { get; } = code;
 
+    public static ApiError ForbiddenHost() =>
+        new(403, "FORBIDDEN_HOST", string.Create(CultureInfo.InvariantCulture,
+            $"NODE Print only answers requests addressed to 127.0.0.1:{LocalApi.Port}."));
+
     public static ApiError ForbiddenOrigin(string origin) =>
         new(403, "FORBIDDEN_ORIGIN", $"The origin {origin} may not use NODE Print.");
 

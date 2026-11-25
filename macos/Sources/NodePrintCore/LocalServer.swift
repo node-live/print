@@ -3,7 +3,8 @@ import Network
 import os
 
 /// HTTP/1.1 on 127.0.0.1 only, one request per connection. When the port cannot be bound it says so and tries
-/// again every 5 s. A `POST /print` counts in `activity` from its head until its response.
+/// again every 5 s. A `POST /print` not refused for its host or origin counts in `activity` from its head until its
+/// response.
 public final class LocalServer: @unchecked Sendable {
     public static let defaultPort: UInt16 = 19233
 
@@ -116,7 +117,7 @@ private final class HTTPConnection: @unchecked Sendable {
             headers[line[..<colon].lowercased()] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
         let head = RequestHead(method: String(requestLine[0]), target: String(requestLine[1]), headers: headers)
-        if head.method == "POST", head.path == "/print" {
+        if head.method == "POST", head.path == "/print", api.refusal(to: head) == nil {
             isJob = true
             activity.jobArrived()
         }
@@ -153,7 +154,7 @@ private final class HTTPConnection: @unchecked Sendable {
                 return close()
             }
             if size == 0 { return respond(head, body: body) }
-            if body.count + size > LocalAPI.maxBodyBytes {
+            if size > LocalAPI.maxBodyBytes - body.count {
                 return send(api.tooLarge(head)) { [self] in drain(nil) }
             }
             let dataEnd = lineEnd.upperBound + size

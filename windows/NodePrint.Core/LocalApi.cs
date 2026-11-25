@@ -17,6 +17,8 @@ public static class LocalApi
     public static readonly IReadOnlyList<string> BuiltInOrigins =
         ["https://nrp.node.live", "http://localhost:5173", "http://127.0.0.1:5173"];
 
+    private static readonly HostString OwnHost = new("127.0.0.1", Port);
+
     public static WebApplication Create(PrintService service)
     {
         var builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
@@ -42,12 +44,17 @@ public static class LocalApi
     {
         var request = context.Request;
         var response = context.Response;
-        using var job = request.Path.Value == "/print" && HttpMethods.IsPost(request.Method) ? service.JobArrived() : null;
         string origin = request.Headers.Origin.ToString();
         bool fromNode = origin.Length > 0 && IsAllowedOrigin(origin, service.AllowedOrigins);
+        var refusal = request.Host != OwnHost ? ApiError.ForbiddenHost()
+            : origin.Length > 0 && !fromNode ? ApiError.ForbiddenOrigin(origin)
+            : null;
+        using var job = refusal is null && request.Path.Value == "/print" && HttpMethods.IsPost(request.Method)
+            ? service.JobArrived()
+            : null;
         try
         {
-            if (origin.Length > 0 && !fromNode) throw ApiError.ForbiddenOrigin(origin);
+            if (refusal is not null) throw refusal;
             if (fromNode)
             {
                 response.Headers.AccessControlAllowOrigin = origin;
