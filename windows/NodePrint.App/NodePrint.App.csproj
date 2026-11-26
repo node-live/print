@@ -31,7 +31,7 @@
     <!-- The components of Windows App SDK 2.5.1 the app uses; the full package would also carry its AI, ML, search and
          widgets parts (onnxruntime, DirectML …). -->
     <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
-    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.7.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.366" PrivateAssets="all" />
     <PackageReference Include="Velopack" Version="1.2.161" />
